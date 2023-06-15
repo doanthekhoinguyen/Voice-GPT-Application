@@ -1,6 +1,8 @@
 import 'package:assistant/feature_box.dart';
+import 'package:assistant/openai_service.dart';
 import 'package:assistant/pallete.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_tts/flutter_tts.dart';
 import 'package:speech_to_text/speech_recognition_result.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 
@@ -14,11 +16,21 @@ class HomePage extends StatefulWidget {
 class _HomePageState extends State<HomePage> {
   final speechToText = SpeechToText();
   String lastWords = '';
+  final flutterTts = FlutterTts();
+  final OpenAiService openAiService = OpenAiService();
+  String? generatedContent;
+  String? generatedImageUrl;
 
   @override
   void initState() {
     super.initState();
     initSpeechToText();
+    initTextToSpeech();
+  }
+
+  Future<void> initTextToSpeech() async {
+    await flutterTts.setSharedInstance(true);
+    setState(() {});
   }
 
   Future<void> initSpeechToText() async {
@@ -26,41 +38,38 @@ class _HomePageState extends State<HomePage> {
     setState(() {});
   }
 
-  /// Each time to start a speech recognition session
   Future<void> startListening() async {
     await speechToText.listen(onResult: onSpeechResult);
     setState(() {});
   }
 
-  /// Manually stop the active speech recognition session
-  /// Note that there are also timeouts that each platform enforces
-  /// and the SpeechToText plugin supports setting timeouts on the
-  /// listen method.
   Future<void> stopListening() async {
     await speechToText.stop();
     setState(() {});
   }
 
-  /// This is the callback that the SpeechToText plugin calls when
-  /// the platform returns recognized words.
   void onSpeechResult(SpeechRecognitionResult result) {
     setState(() {
       lastWords = result.recognizedWords;
     });
   }
 
+  Future<void> systemSpeak(String content) async {
+    await flutterTts.speak(content);
+  }
+
   @override
   void dispose() {
-    // TODO: implement dispose
     super.dispose();
     speechToText.stop();
+    flutterTts.stop();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('KN Assistant'),
+        title: const Text('Khoi Nguyen Assistant'),
         centerTitle: true,
         leading: const Icon(Icons.menu),
       ),
@@ -109,14 +118,16 @@ class _HomePageState extends State<HomePage> {
                   borderRadius: BorderRadius.circular(20).copyWith(
                     topLeft: Radius.zero,
                   )),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(vertical: 5.0),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 5.0),
                 child: Text(
-                  'Hi Khoi Nguyen, what task can I do for you?',
+                  generatedContent == null
+                      ? 'Hi Khoi Nguyen, what task can I do for you?'
+                      : generatedContent!,
                   style: TextStyle(
                     fontFamily: 'Cera Pro',
                     color: Pallete.mainFontColor,
-                    fontSize: 20,
+                    fontSize: generatedContent == null ? 25 : 18,
                   ),
                 ),
               ),
@@ -170,12 +181,25 @@ class _HomePageState extends State<HomePage> {
           if (await speechToText.hasPermission && speechToText.isNotListening) {
             await startListening();
           } else if (speechToText.isListening) {
+            final speech = await openAiService.isArtPromtAPI(lastWords);
+            if (speech.contains('https')) {
+              generatedImageUrl = speech;
+              generatedContent = null;
+              setState(() {});
+            } else {
+              generatedImageUrl = null;
+              generatedContent = speech;
+              setState(() {});
+              await systemSpeak(speech);
+            }
             await stopListening();
           } else {
             initSpeechToText();
           }
         },
-        child: const Icon(Icons.mic),
+        child: Icon(
+          speechToText.isListening ? Icons.stop : Icons.mic,
+        ),
       ),
     );
   }
